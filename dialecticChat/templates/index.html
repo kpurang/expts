@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat with ...</title>
+    <script language="text/javascript">
+        cb = document.getElementById('convobox');
+
+        cb.addEventListener('input', function(e){
+            alert('loaded');
+            cb.SelectionStart = myTextBox.Text.Length;
+            cb.ScrollToCaret();
+            ub = document.getElementById('userbox');
+            ub.focus()
+        })
+    </script>
+</head>
+<body>
+    <textarea class="scrollabletextbox" id='convobox' name='convobox'
+              style="overflow:scroll; width:600px;height:400px;">{{convo}}
+    </textarea>
+    <br/>
+    Type your response here:
+    <form method="POST">
+        <input id="userbox" name="userbox" style="width:500px; background-color:#FAFAFA" type="text">
+        <button type="submit" name="submit">Send</button>
+    </form>
+    <p style="font-size:smaller;">To stop and reset the conversation, say 'Bye'</p>
+</body>
+</html>
