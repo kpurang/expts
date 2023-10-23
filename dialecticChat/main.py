@@ -1,3 +1,8 @@
+"""
+This is a loop getting input form the user, sending it to chatgpt and returning
+the response.
+"""
+
 import os
 import logging
 import sys
@@ -11,7 +16,7 @@ import openaiChat
 BASEDIR = os.getcwd()
 print('BASEDIR ', BASEDIR)
 DUMPDIR = os.path.join(BASEDIR, 'runs/openai')
-BASENAME = 'lincoln'
+BASENAME = 'generic'
 
 # logging.basicConfig(filename='/tmp/factCheck.log', level=logging.INFO)
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -23,12 +28,10 @@ app.secret_key = 'hungryRats'
 def initForm():
     session['convo'] = []
     cstr = "assistant: What do you want to talk about?"
-    print('Zeroed convo')
     return render_template('index.html', convo=cstr)
 
 @app.route("/", methods=["POST"])
 def processText():
-    print('ProcessText convo:', session['convo'])
     userInput = request.form['userbox']
     convo = session['convo']
     convo.append({'role': 'user', 'content': userInput})
@@ -41,7 +44,7 @@ def processText():
         session['convo'] = []
         cstr = "assistant: Bye!\n\nWhat do you want to talk about next?"
     else:
-        response = openaiChat.getResponse(convo, rtype=1)
+        response = openaiChat.getResponse(convo, rtype=0)
         convo.append({'role': 'assistant', 'content': response})
         cstr = '\n'.join(f"{t['role']}: {t['content']}" for t in convo)
         session['convo'] = convo

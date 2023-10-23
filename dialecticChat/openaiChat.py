@@ -1,6 +1,6 @@
 """
 This is to get chat responses from openai
-Main method is getTesponse
+A simple instruction works well for this purpose
 """
 import os
 import logging
@@ -13,15 +13,9 @@ BASEDIR = os.getcwd()
 logging.basicConfig(filename=os.path.join(BASEDIR, 'test.log'),
                     level=logging.DEBUG)
 
-# alt. first figure whether better to do statement or counterarg or question then do it
 INSTR_0 = """You are a philosopher who uses dialectic techniques to get people to think more deeply about issues.
 
 Given the conversation below, generate a reponse or counterargument which can be statements or open-ended questions.
-"""
-
-INSTR_1 = """Take on the persona of Abraham Lincoln and respond to the conversation below so that the user has a better insight into Lincoln.\
-If the user's utterance is inappropriate or irrelevant to Lincoln, say so.
-
 """
 
 def queryOpenai(query: list[dict] = [],
@@ -30,7 +24,6 @@ def queryOpenai(query: list[dict] = [],
                fobj: TextIO = None) -> (str, list[str]):
     qObj = [{"role": "system", "content": instr}]
     qObj.extend(query)
-    print('\nQOBJ\n', qObj)
     response = openai.ChatCompletion.create(
                    model = oMODEL,
                    messages = qObj,
@@ -48,6 +41,4 @@ def queryOpenai(query: list[dict] = [],
 def getResponse(convo: list[dict] = [], rtype: int=0) -> dict:
     if rtype == 0:
         response, answers = queryOpenai(convo, INSTR_0, temperature=0.4)
-    elif rtype == 1:
-        response, answers = queryOpenai(convo, INSTR_1, temperature=0.4)
     return answers[0]
