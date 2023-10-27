@@ -1,0 +1,17 @@
+{
+    "maxTokens": 128,
+    "nEpochs": 64,
+    "lr": 0.0005,
+    "trainBatchSize": 32,
+    "maskProp": 0.2,
+    "udDir": "train/data",
+    "trainFile": "en_ewt-ud-train.conllu",
+    "validFile": "en_ewt-ud-dev.conllu",
+    "testFile": "en_ewt-ud-test.conllu",
+    "outDir": "train/runs",
+    "ckptFname": "ckpt.pt",
+    "lossesFile": "losses.csv",
+    "learningCurve": "learningCurve.png",
+    "savedTrainConfig": "trainConfig.jsom",
+    "savedBertConfig": "bertConfig.json"
+}
