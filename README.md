@@ -1,5 +1,7 @@
 
 
+## Summary
+
 These are experiments in NLP, ML and LLMs
 
 | Name              | Description                                                 |
@@ -9,6 +11,47 @@ These are experiments in NLP, ML and LLMs
 | fakeGen           | Generates plausible looking false statements                |
 | factCheck         | Predicts whether a statement is true or false               |
 | llmConvoAnalysis  | Predicts the intent of conversational participants          | 
+| llm/surveyGen     | Gets papers from arxiv on some topic and gets info about them |
+
+
+## bert4POS
+
+Bert represents all sorts of linguistic information in its output, but extracting this is hard. This is an expwriment to train a little instance of Bert to act as a part-of-speech tagger. The part of speech is explicitly encoded in the embeddings. 
+
+The training data was from universal dependenies. The results of the little experiment could be better. A larger Bert instance and more data will help. 
+
+
+## Dialectic chat
+
+Here we have chatgpt questioning your thoughts and assumptions to help you gain clarity. I thought that chatgpt whould need some guidance in the form of different instructions and data processing to do that, but it knows how to do this out of the box. So this is simply a loop around chatgpt with appropriate instructions.
+
+## FakeGen
+
+This generates plausible sounding false statements from true ones. For example, one of these is true:
+- Sunset Boulevard premiered in the US on 10th December 1993.
+- Cats premiered in the US on 10th December 1993.
+
+I use the triviaQA dataset for questions and (presumably) true answers and LLMs to generate true and false statements.
+
+It would be interesting to see if this can be extended to generate fake but consistent and plausible stories from true ones.
+
+## Factcheck
+
+Given a statement like the above, can we tell whether it is true? 
+
+LLMs are not very good at this. They make up sources to justify whatever they decide is true. Web search with inference works better. LLMs doing the inference works better than Bert based inference models.
+
+## LLM Conversation Analysis
+
+chat models are great at conversation, and must represent various aspects of conversation. This experiment is to try to get the intent of the speaker at each turn. LLMs make that easy
+
+## Survey generator
+
+Say you are interested in a topic and go to Arxiv to find more information. You are likely to find a long list of articles. Sorting through that to find what to read is not fun.
+
+Given a topic, this script gets relevant papers from Arxiv and extracts some basic information that can help you decide quickly which of the papers you should read.
+
+
 
 
 
