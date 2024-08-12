@@ -11,8 +11,9 @@ These are experiments in NLP, ML and LLMs
 | fakeGen           | Generates plausible looking false statements                |
 | factCheck         | Predicts whether a statement is true or false               |
 | llmConvoAnalysis  | Predicts the intent of conversational participants          | 
-| llm/surveyGen     | Gets papers from arxiv on some topic and gets info about them |
-
+| surveyGen     | Gets papers from arxiv on some topic and gets info about them |
+| finetuneQuantizedGemma | Fine tuning the Gemma LLM |
+| Visual anomaly detector | Using a convolutional autoenvoder to detect anomalies in images | 
 
 ## bert4POS
 
@@ -51,7 +52,13 @@ Say you are interested in a topic and go to Arxiv to find more information. You 
 
 Given a topic, this script gets relevant papers from Arxiv and extracts some basic information that can help you decide quickly which of the papers you should read.
 
+## Fine-tuning Gemma
 
+Using LORA to fine tune the Gemma LLM. The LLM was fien tuned to improve its performance in guessing the prompt used given an input and output pair.
+
+## Visual anomaly detection
+
+Using a convolutional autoencoder to detect anomalies in images. In this case the images are from the MVTEC bottles daaset.
 
 
 
