@@ -2,18 +2,23 @@
 
 ## Summary
 
-These are experiments in NLP, ML and LLMs
+These are experiments in NLP, ML, LLMs and agents.
 
 | Name              | Description       | Keywords |                                          
 |-------------------|-------------------------------------------------------------|----|
-| [bert4POS](https://github.com/kpurang/expts/tree/main/NL_DL/bert4POS/v0) | Training a little Bert model togenerate POS tags in its embeddings | Bert, POS tagger, Universal Dependencies |
+| [Epistemic agents](https://github.com/kpurang/expts/tree/main/agents/epistemicAgents) | Adding explicit beliefs to agents | agents, beliefs, LLM
+| [bert4POS](https://github.com/kpurang/expts/tree/main/NL_DL/bert4POS/v0) | Language modeling, NLP |  Training a little Bert model togenerate POS tags in its embeddings | Bert, POS tagger, Universal Dependencies |
 | [dialecticChat](https://github.com/kpurang/expts/tree/main/llm/dialecticChat)     | Socratic conversation interface         | llm, chat, flask|
 | [fakeGen](https://github.com/kpurang/expts/tree/main/llm/fakeGen)           | Generates plausible looking false statements                | llm prompting, TriviaQA |
 | [factCheck](https://github.com/kpurang/expts/tree/main/llm/factcheck)         | Fact checking statements using web search and/or LLMs         | RAG, web search, Deberta|
 | [llmConvoAnalysis](https://github.com/kpurang/expts/tree/main/llm/llmConvoAnalysis/llmConvoAnalysis_1.ipynb)  | Predicts the intent of conversational participants          | llm, langchain, conversation, ConvLab | 
 | [surveyGen](https://github.com/kpurang/expts/tree/main/llm/surveyGen)     | Finds the most useful papers to read on some topic in arxiv | llm, prompting, summarization, embedding |
 | [finetuneQuantizedGemma](https://github.com/kpurang/expts/blob/main/llm/fineTuneQuantizedGemma.ipynb) | Fine tuning the Gemma LLM | llm, Gemma, Lora, GCP, fine-tuning |
-| [Visual anomaly detector](https://github.com/kpurang/expts/blob/main/llm/fineTuneQuantizedGemma.ipynb) | Using a convolutional autoenvoder to detect anomalies in images | vision, anomaly detection, convolutional autoencoder  |
+| [Visual anomaly detector](https://github.com/kpurang/expts/blob/main/llm/fineTuneQuantizedGemma.ipynb) | Using a convolutional autoenvoder to detect anomalies in images | machine vision, anomaly detection, convolutional autoencoder  |
+
+## EpistemicAgents
+
+Making the beliefs of agents explicit which results in greater transparency and control of the agent.
 
 ## bert4POS
 
