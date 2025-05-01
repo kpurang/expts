@@ -1,0 +1,6 @@
+How much is Sentence 1 opposite of Sentence 2? Respond with a number from 1 
+to 10 with 1 being somewhat opposite and 10 being completely opposite. Only say the number.
+
+Sentence 1: {s1}
+
+Sentence 2: {s2}

@@ -1,0 +1,8 @@
+Generate a plausible chain of reasoning to conclude "{conclusion}" from the fact set below and \
+other assumptions or commonsense knowledge that you need.
+           
+Generate your response as a numbered list of the facts and assumptions you used without comment. \
+If you can't find a plausible chain of resoning, say 'None'.
+
+Fact Set: 
+{facts}

@@ -1,0 +1,3 @@
+1. Fact: Jack is a bird (given in the fact set)
+      2. Assumption: Birds have the ability to fly (commonsense knowledge)
+      3. Conclusion: Therefore, if Jack is a bird, then it can fly. However, this doesn't imply that Jack is currently flying at 10 am since no such information was provided in the fact set or the given time doesn't affect whether Jack can fly or not. The other facts (grass is green, mice like cheese, and Ann forgot her phone) are irrelevant to the conclusion that Jack flies.

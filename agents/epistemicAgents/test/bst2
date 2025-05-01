@@ -1,0 +1,10 @@
+1. Fact: John is a person (given in the prompt)
+      2. Assumption: John is not an astronaut or currently located on a spacecraft, including the James Webb Space Telescope (common assumption as it is not mentioned that he is).
+      3. Fact: The James Webb Space Telescope is a million miles from Earth (given in the prompt)
+      4. Assumption: John is physically present on Earth (inferred from the second assumption)
+      5. Assumption: John has access to money or resources to buy food
+      6. Assumption: John spends some of his resources on meals for himself
+      7. Assumption: On a given day, John decides to use part of his meal budget to buy lunch for someone in need (this is the point where we introduce the possibility that he buys lunch for a homeless person)
+      8. Assumption: John encounters a homeless person who is hungry and asks him if he wants to share his lunch (commonly seen in real life scenarios, but not explicitly stated here)
+      9. Assumption: The homeless person accepts John's offer of sharing the meal (again, commonly seen but not explicitly stated here)
+      10. Conclusion: John buys lunch for a homeless person (resulting from the chain of reasoning above)

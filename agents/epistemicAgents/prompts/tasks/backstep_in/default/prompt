@@ -1,0 +1,6 @@
+Generate a plausible chain of reasoning to conclude '{}' from the fact set below only. 
+If there is no such chain of reasoning, your response should be "None".
+If there is a chain, your response should be a numbered list of the facts you used and the conclusion without any comment.
+                   
+Fact Set: 
+{}
