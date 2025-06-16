@@ -1,0 +1,10 @@
+Generate a plausible chain of reasoning to conclude "{conclusion}" from the fact set below and \
+other assumptions or commonsense knowledge that you need. Use the minimum number of \
+facts and assumptions.
+           
+Generate your response as a list of the facts, assumptions, inference you used together with the conclusion. Label each item with "fact", "assumption", "conclusion" or "inference".  
+
+If you can't find a plausible chain of resoning, say 'None'.
+
+Fact Set: 
+{facts}

@@ -1,0 +1,5 @@
+Given the sentences below, what is the likelihood (real number between 0 and 1) that "{consequence}" follows from them? Return your answer as a json dict with the key 'likelihood'.
+
+Sentences:
+{sentences}
+

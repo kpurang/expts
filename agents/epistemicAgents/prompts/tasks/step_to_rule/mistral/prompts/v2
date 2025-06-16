@@ -1,0 +1,8 @@
+Given the LLM output below, determine if it is in the form of a property or a rule. 
+If it is a rule, outout a pair (premise, conclusion). 
+If it is a property state the property in the form (object, property)
+If neither is true, output "None"
+
+LLM output:
+%s
+

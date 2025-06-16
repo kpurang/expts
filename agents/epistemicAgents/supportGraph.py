@@ -10,23 +10,80 @@ import pandas as pd
 import params
 from enum import Enum
 import numpy as np
+from beliefs import Belief
+from beliefSet import BeliefSet
+from beliefStore import BeliefStore
+from support import Support
+import llm_utils
+import pydot
 
 # logging
-blog = logging.getLogger()
+log = logging.getLogger()
 #fh = logging.FileHandler(filename=LOGFILE)
 #fh.setLevel(logging.DEBUG)
 #blog.addHandler(fh)
 
 """
-This has methods that work with Supports to build a graph. this links supports 
-based on which beliefs support which others. this is used to compute the 
-confidence the agent has in statements
+Supports are edges and beliefs are nodes. This module implements graph methods
+over that graph
 """
 
-"""
-Basic methods.
-these link a support to a bunch of others
-"""
+
+def plot_derivation(bel: Belief,
+                    bstore,
+                     gname: str,
+                     pngFname: str,
+                     depth: int):
+    """
+    generates a png of the derivation of the given belief
+
+    the nodes are support objects labeled by the belief they support
+    edges are between supports in supported_by or supports
+    """
+    log.debug('SentenceGraps:plot_derivation')
+    log.debug('Support dict\n' + Support.dump_support_dict())
+    graph = pydot.Dot(gname, graph_type="graph", bgcolor="white")
+    node2sid = []
+    sid2node = {}
+    print("Support of root bel: " + str(bel.support))
+    root = pydot.Node(f"s_{bel.support.id}",
+                      label= f"{bel.support.info.stype.name}: {bel.text_rep} @{bel.support.confidence:.2f}")
+    sid2node[bel.support.id] = len(node2sid)
+    node2sid.append(bel.support.id)
+    graph.add_node(root)
+    log.debug(f"Added concludion {bel.text_rep}")
+    add_premises(graph, bel.support, depth-1, bstore, [])
+    log.debug("dot file\n" + graph.to_string())
+    #log.debug("\ngraphviz file\n" + graph.create_dot())
+    graph.write_png(pngFname)
+    log.info(f"written png file: {pngFname}")
+
+def add_premises(graph, support, depth, bstore, processed_nodes):
+    if depth <= 0:
+        return
+    premises = []
+    if support.id in processed_nodes:
+        log.debug(f'Alreadu processed this node {support.id}')
+        return
+    log.info(f'addPremise depth: {depth}')
+    for sid in support.supported_by:
+        log.debug(f"supported by {sid}")
+        the_support = Support.by_id(sid)
+        premise = Belief.by_id(the_support.belief_id, bstore)
+        pnode = pydot.Node(f"s_{sid}",
+                           label = f"{the_support.info.stype.name}:{premise.text_rep} @{the_support.confidence:.2f}")
+        graph.add_node(pnode)
+        log.debug(f"Added node {premise.text_rep}")
+        pedge = pydot.Edge(dst=f"s_{support.id}", src=f"s_{sid}")
+        graph.add_edge(pedge)
+        log.debug(f"Added edge s_{sid} -> s_{support.id}")
+        processed_nodes.append(support.id)
+        if depth == 1:
+            log.info('generate graph reached depth limit')
+            return
+        add_premises(graph, the_support, depth-1, bstore, processed_nodes)
+
+
 
 def bset_derivable(bel: Belief,
                    bset: BeliefSet,
@@ -47,7 +104,7 @@ def bset_derivable(bel: Belief,
                                               with_llm,
                                               min_conf)
     # result is a list of beliefs
-    result = sentence_to_belief(result_sentences bset, bstore)
+    result = sentence_to_belief(result_sentences, bset, bstore)
     confidence = compute_inference_conf(result)     # maybe take the lowest or * all
     if result is not None:
         new_support = Support(belief_id = bel.id,
@@ -66,6 +123,9 @@ def bset_derivable(bel: Belief,
         bel.support = merged_support
         return merged_support
     return None
+
+def compute_inference_conf(res):
+    return 0
 
 def sentence_to_belief(result_sentences,
                        bset,

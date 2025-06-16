@@ -12,30 +12,53 @@ import params
 import Levenshtein
 import globals
 
-blog = logging.getLogger()
+"""
+Classes:
+    - BeliefStore: persistent storage and indexing for beliefs
+    - BSContext: context manager wrapping the belief store
+"""
+
+log = logging.getLogger()
+
 
 class BeliefStore:
     """
     This stores beliefs, supports, texts. Interface to sql database and vector
     store
+
+    Methods:
+        - get_milvus_client: initialize milvus as vector store
+        - ensure_tables: make sure tables exist in the database
+        - exit: serialize and close persistent data stores
+        - get_embedding: return the embedding ofr a string
+        - get_stmt_id: given a text, return its id
+        - get_similar_stmts: given a text, return stmts similar to it
+        - get_milvus_id_dist: get closest stnt id and distance from the text
+        - get_similar_beliefs: find beliefs similar to the one provided
+        - dump_vector_store: return string rep of vector store
+        - dump_table: return string rep of a sql table
+        - get_belief_row_by_id: given an id, return the belief table row
+        - get_support_row_by_it: given id, return the support table row
     """
     def __init__(self,
                  milvus_file=params.milvusLoc,
                  sqlite_file=params.sqliteLoc,
                  ):
         """
+        Initial setup
+
         Sets up the database and the vector store.
         Creates database and tables if needed.
         :param milvus_file: location of the milvus file
         :param sqlite_file: location of the sqlite file
         """
-        blog.info(f"BeliefStore.init {milvus_file}, {sqlite_file}")
+        log.info(f"BeliefStore.init {milvus_file}, {sqlite_file}")
         self.mv_client = self.get_milvus_client(milvus_file)
         self.conn = sqlite3.connect(sqlite_file)
         self.ensure_tables()
         self.bset_set = set()
         globals.bstore = self
-        blog.debug(f"done bstore construction")
+        log.debug(f"done bstore construction")
 
     def get_milvus_client(self, milvus_file):
         """
@@ -43,7 +66,7 @@ class BeliefStore:
         :param milvus_file:
         :return: the milvus client
         """
-        blog.debug("BeliefStore.get_milvus_client")
+        log.info("BeliefStore.get_milvus_client")
         mv_client = MilvusClient(milvus_file)
         id_fs = FieldSchema(name="stmt_id", dtype=DataType.INT64, is_primary=True,
                             description='Id of the statement')
@@ -66,7 +89,7 @@ class BeliefStore:
             index_params=index_params,
         )
         mv_client.load_collection(collection_name=params.COLLECTION_NAME)
-        blog.debug('Vector store up')
+        log.debug('Vector store up')
         return mv_client
 
     def ensure_tables(self):
@@ -74,14 +97,15 @@ class BeliefStore:
         Makes sure the sqlite tables we need exist
         :return:
         """
-        blog.debug("BeliefStore.ensure_tables")
+        log.info("BeliefStore.ensure_tables")
         res = self.conn.execute("select name from sqlite_master")
         tables = [x[0] for x in res.fetchall()]
         for t in params.tables.keys():
             if t not in tables:
                 self.conn.execute(params.tables[t])
-                blog.debug(f"Created table {t}")
+                log.debug(f"Created table {t}")
         res = self.conn.execute("select * from sources where label='default'")
+        # should live in the db and not be deleted
         if len(res.fetchall()) == 0:
             self.conn.execute(f"""insert into sources(url, label, description, credibility)\
             values('{params.d_src['url']}', '{params.d_src['label']}', \
@@ -89,12 +113,9 @@ class BeliefStore:
             self.conn.commit()
 
     def exit(self, dump_tables=[], dump_vectors=False):
+        """ Exit in an orderly way."""
         rv = ''
-        """
-        Closes storage nicely.
-        :return:
-        """
-        blog.info("BeliefStore.exit")
+        log.info("BeliefStore.exit")
         beliefs.Belief.update_table(self)
         Support.update_table(self)
         for t in dump_tables:
@@ -113,22 +134,23 @@ class BeliefStore:
         #
         self.mv_client.close()
         self.conn.close()
-        blog.info("bstore exited")
+        log.info("bstore exited")
         return rv
 
     def get_embedding(self, text: str) -> list[float]:
         """
         returns the embedding fro the text as a list. Embedding model is set
         in the params file
+
         :param text: text to embed
         :return: list of floats or None
         """
-        blog.debug(f"BeliefStore.get_embedding: {text}")
+        log.debug(f"BeliefStore.get_embedding: {text}")
         try:
             resp = ollama.embed(model=params.EMBEDDING_MODEL, input=text)
             embedding = resp.embeddings[0]
         except Exception as e:
-            blog.error(f"Cannot get embedding for {text}\n{str(e)}")
+            log.error(f"Cannot get embedding for {text}\n{str(e)}")
             embedding = None
             raise e
         return embedding
@@ -137,6 +159,7 @@ class BeliefStore:
                     txt):
         """
         gets tje statement id for the text
+
         :param txt: must match a statement
         :return: the id or exception
         """
@@ -153,13 +176,14 @@ class BeliefStore:
                           max_match: int=10,):
         """
         given a text return statements that are close to the text
+
         if the txt is new, add a stmt for it. this should be separated perhaps
         :param txt: new text
         :param max_dist: how far to accept
         :param max_match: how many to get
         :return: a list od [stmt_id, dist], isNew where the first stmt is the text
         """
-        blog.debug("get_similar_stmts " + txt)
+        log.info("get_similar_stmts " + txt)
         id_dists = []
         is_new = False
         # assuming cosine similarity. generlaize later
@@ -178,7 +202,7 @@ class BeliefStore:
             id_dists = self.get_milvus_id_dist(embedding, radius, range, max_match)
             # this is list of [stmt_id, dist to the text]
         except Exception as e:
-            blog.error(f"Connot find siumilar to {txt}\n{str(e)}")
+            log.error(f"Connot find siumilar to {txt}\n{str(e)}")
             raise e
         id_dists.sort(key=lambda x: x[1])
         the_stmt = None
@@ -191,10 +215,10 @@ class BeliefStore:
                     res = self.conn.execute(sql)
                     stmt_text = res.fetchone()[0]
                 except Exception as e:
-                    blog.error(f"Cannot get stmt for {id_dists[0][0]}\n{str(e)}")
+                    log.error(f"Cannot get stmt for {id_dists[0][0]}\n{str(e)}")
                     raise e
                 if Levenshtein.ratio(stmt_text, txt) >= params.LEVENSHTEIN_LB :
-                    print('have identical text')
+                    log.debug(f"have identical text {stmt_text} || {txt}")
                     the_stmt = id_dists[0][0]
         # get a new stmt for the txt
         if the_stmt is None:
@@ -204,31 +228,33 @@ class BeliefStore:
                 sql = f"insert into stmts(text) values(?)"
                 cur.execute(sql, [txt])
                 the_stmt = cur.lastrowid
+                log.debug(f"Inserted statement {txt} with id {the_stmt}")
                 cur.close()
                 self.conn.commit()
                 id_dists = [[the_stmt, 0]] + id_dists
                 is_new = True
             except Exception as e:
-                blog.error(f"Cannot write new stmt {txt}\n{str(e)}")
+                log.error(f"Cannot write new stmt {txt}\n{str(e)}")
                 raise e
             try:
                 res = self.mv_client.insert(collection_name=params.COLLECTION_NAME,
                                             data = {'stmt_id': the_stmt,
                                                     'embedding': embedding}
                                             )
-                blog.debug('milvus insertion ' + str(res))
+                log.debug('milvus insertion ' + str(res))
             except Exception as e:
-                blog.error(e)
+                log.error(e)
                 raise e
             # add the distances computed to the distance table
             # recompute distances if we did narorw search above
             if radius != params.COSINE_WN_RADIUS or max_match <  params.SIM_NUM_MATCH:
-                blog.debug('Redoing vector search')
+                log.debug('Redoing vector search')
                 radius = params.COSINE_WN_RADIUS
                 range = params.COSINE_WN_RANGE
                 id_dists = self.get_milvus_id_dist(embedding, radius, range, params.SIM_NUM_MATCH)
             values = []
             for sd in id_dists:
+                log.debug(f"id-dists: {sd[0]}, {sd[1]}")
                 ident = False
                 if sd[0] > the_stmt:
                     values.append([the_stmt, sd[0], params.EMBEDDING_METRIC, sd[1]])
@@ -237,14 +263,14 @@ class BeliefStore:
                 else:
                     ident = True
                 if not ident:
-                    blog.debug(f'stmtdist: {values[-1][0]} {values[-1][1]} : {values[-1][3]}')
+                    log.debug(f'stmtdist: {values[-1][0]} {values[-1][1]} : {values[-1][3]}')
             if len(values) > 0:
                 try:
                     ins = "insert into stmtdists(stmt_id_1, stmt_id_2, dtype, value) values(?, ?, ?, ?)"
                     res = self.conn.executemany(ins, values)
                     self.conn.commit()
                 except Exception as e:
-                    blog.error(f"Cannot update stmtdists\n{str(e)}")
+                    log.error(f"Cannot update stmtdists\n{str(e)}")
                     raise e
         # return the stmt that matches the txt exactly
         return id_dists, is_new
@@ -256,6 +282,7 @@ class BeliefStore:
                            max_match):
         """
         return closest matches for the embedding
+
         :param embedding: to find closest matches
         :param radius: min similarity
         :param range: max similarity
@@ -263,7 +290,7 @@ class BeliefStore:
         :return:
         """
         id_dists = []
-        blog.debug(f"get_milvus_id_dist radius: {radius}, range: {range}")
+        log.debug(f"get_milvus_id_dist radius: {radius}, range: {range}")
         res = self.mv_client.search(collection_name=params.COLLECTION_NAME,
                                     data=[embedding],
                                     search_params={
@@ -277,13 +304,15 @@ class BeliefStore:
                                     limit=max_match,
                                     )
         # COSINE returns similarity. convert all to distances 0..1
+        print(res)
         if len(res[0]) > 0:
             for x in res[0]:
                 if 'id' in x:
                     dist = 1 - abs(x['distance']) if params.EMBEDDING_METRIC in ['COSINE', 'IP'] else x['distance']
                     id_dists.append([x['id'], dist])
+                    log.debug(f"id_dist: {x['id']}, {dist}")
         else:
-            blog.debug('no results')
+            log.debug('no results')
         return id_dists
 
     def get_similar_beliefs(self,
@@ -294,6 +323,7 @@ class BeliefStore:
                             mult_match: bool = False):
         """
         get beliefs that are close to this text in the same beliefset
+
         TODO: get a list of similar stmts from get_similar_stmts to skip one join
             separate getting similar beleif/stmt from generating the stmtdists for new ones
         :param txt: text to get beleifs for
@@ -304,11 +334,13 @@ class BeliefStore:
             is an exact match?
         :return: list of [beleif-id, distance, text], the stmt dor this string
         """
-        blog.info(f"get_simiar_beleifs {txt}")
+        log.info(f"get_simiar_beleifs {txt}")
         id_dists, is_new = self.get_similar_stmts(txt, wide_net=True, max_match=max_match)
         bid_dist_txt = []
         the_stmt_id = id_dists[0][0]
+        log.debug(f"stmt id from get-similar-stmts: {the_stmt_id}")
         if id_dists[0][1] < params.EPS_EMBED_IDENT and not mult_match:
+            # if the closest stmt/belief is almost identical, return just that one
             sql = """select b.id, 0.0, c.text
             from stmt2bel as a 
             join beliefs as b on a.belief_id=b.id
@@ -319,9 +351,10 @@ class BeliefStore:
                 res = self.conn.execute(sql, (the_stmt_id, beliefset_id))
                 bid_dist_txt = res.fetchall()
             except Exception as e:
-                blog.error(f"Cannot get db for {sql}\n{str(e)}")
+                log.error(f"Cannot get db for {sql}\n{str(e)}")
                 raise e
         else:
+            # otherwise return all those that are close enough
             sql = """select c.id, a.value, d.text 
             from stmtdists as a
             join stmt2bel as b on a.stmt_id_1 = b.stmt_id
@@ -333,8 +366,9 @@ class BeliefStore:
                 res = self.conn.execute(sql, (the_stmt_id, beliefset_id, max_dist))
                 bid_dist_txt = res.fetchall()
             except Exception as e:
-                blog.error(f"Cannot get db for {sql}\n{str(e)}")
+                log.error(f"Cannot get db for {sql}\n{str(e)}")
                 raise e
+            # switch the ids
             sql = """select c.id, a.value, d.text 
             from stmtdists as a
             join stmt2bel as b on a.stmt_id_2 = b.stmt_id
@@ -346,14 +380,14 @@ class BeliefStore:
                 res = self.conn.execute(sql, (the_stmt_id, beliefset_id, max_dist))
                 bid_dist_txt.extend(res.fetchall())
             except Exception as e:
-                blog.error(f"Cannot get db for {sql}\n{str(e)}")
+                log.error(f"Cannot get db for {sql}\n{str(e)}")
                 raise e
         for m in bid_dist_txt:
-            blog.debug(f"match: {str(m)}")
+            log.debug(f"match: {str(m)}")
         return bid_dist_txt, the_stmt_id, is_new
 
     def dump_vector_store(self):
-        blog.info('Dumping vector store')
+        log.info('Dumping vector store')
         res = self.mv_client.query(collection_name=params.COLLECTION_NAME, filter='stmt_id >= 0')
         for row in res:
             print('row: ', row['stmt_id'])
@@ -370,17 +404,18 @@ class BeliefStore:
     def get_belief_row_by_id(self, bid:int = None):
         """
         Given an id, it returns the belief from  db
+
         :param id:
-        :return: the belief object
+        :return: the sql row
         """
-        blog.debug(f"BeliefStiore.get_belief_by_id {bid}")
+        log.debug(f"BeliefStiore.get_belief_row_by_id {bid}")
         row = None
         if bid is not None:
             try:
                 res = self.conn.execute("select * from beliefs where id=?", (bid, ))
-                row = res.fetchall()[0]
+                row = res.fetchone()
             except Exception as e:
-                blog.warning(f"Cannot get row {bid}\n{str(e)}")
+                log.warning(f"Cannot get row {bid}\n{str(e)}")
                 raise e
         if row is None:
             raise ValueError(f"Cannot find belief in db {bid}")
@@ -389,17 +424,18 @@ class BeliefStore:
     def get_support_row_by_id(self, sid:int = None):
         """
         Given a support id, return the support object
+
         :param sid: support id
         :return: support object
         """
-        blog.debug(f"BeliefStiore.get_support_by_id {sid}")
+        log.debug(f"BeliefStiore.get_support_row_by_id {sid}")
         row = None
         if sid is not None:
             try:
                 res = self.conn.execute("select * from supports where id=?", (sid, ))
                 row = res.fetchall()[0]
             except Exception as e:
-                blog.warning(f"Cannot get support row {sid}\n{str(e)}")
+                log.warning(f"Cannot get support row {sid}\n{str(e)}")
                 raise e
         if row is None:
             return None
@@ -410,6 +446,10 @@ class BeliefStore:
 class BSContext:
     """
     context manager for the bstore to make sure we exit nicely
+    TODO:
+        add a __call__ method to set the location of the databases iso going
+        with the default.
+        https://stackoverflow.com/questions/68300246/passing-arguments-to-context-manager
     """
     bstore = None
 

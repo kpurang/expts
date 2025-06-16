@@ -1,0 +1,5 @@
+Given the LLM output below, extract a generalization or a rule. If there is none, return "None".
+
+LLM output:
+%s
+

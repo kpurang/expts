@@ -1,0 +1,8 @@
+Given the event below use you knowledge of causes and effects to decide the likelihood of \
+the outcome being true. Explain your reasoning step by step, and be concise in your final answer. 
+
+Event: %s
+
+Outcome: %s
+
+

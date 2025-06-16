@@ -1,0 +1,1 @@
+Does "{candidate}" mean that "{query}"? Respond with 1 if true and 0 if false. Output as json with key 'implies'.

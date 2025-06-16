@@ -1,0 +1,8 @@
+Given the event below use you knowledge of human interactions to decide the likelihood of \
+the outcome being true. Explain your reasoning step by step, and be concise in your final answer. 
+
+Event: %s
+
+Outcome: %s
+
+

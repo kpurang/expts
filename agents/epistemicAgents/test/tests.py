@@ -9,18 +9,20 @@ import logging
 import sys
 import random
 import llm_utils
-import reasoning
+from sentenceReasoner import SentenceReasoner
+import supportGraph
+import utils.nl_utils  as nl_utils
 
 blog = logging.getLogger()
 #fh = logging.FileHandler(filename=LOGFILE)
 #fh.setLevel(logging.DEBUG)
 cw = logging.StreamHandler(sys.stdout)
-cw.setLevel(logging.INFO)
+cw.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s',
                               "%m/%d %H:%M:%S")
 cw.setFormatter(formatter)
 blog.addHandler(cw)
-blog.setLevel(logging.INFO)
+blog.setLevel(logging.DEBUG)
 
 MILVUS_FILE = '/tmp/s_test_milvus.db'
 SQLITE_FILE = '/tmp/s_test_sqlite.db'
@@ -226,8 +228,9 @@ class Test_LLMUtils(unittest.TestCase):
         #print('\n\nbackward_step')
         #self.test_backward_step_0()
         #self.test_quick_parse()
-        self.test_dereference()
-        #self.test_str_compare()
+        #self.test_dereference()
+        self.test_str_compare()
+        #self.test_get_llm_msg()
 
     def test_get_degree_similarity(self):
         s1 = 'It is raining.'
@@ -262,7 +265,7 @@ class Test_LLMUtils(unittest.TestCase):
         responses = ['1. Jack is a bird\n    (definition of Jack)\n\n   2. Birds fly.\n    (general knowledge fact)\n\n   Conclusion: Jack flies.' ,
                      ]
 
-        facts, assumptions, conclusion = llm_utils.quick_parse(responses[0], 'Jack flies',
+        facts, assumptions, conclusion = nl_utils.quick_parse(responses[0], 'Jack flies',
                                                                ['Jack is a bird.', 'Birds fly'])
         print('Facts: ', facts)
         print('Assumptions: ', assumptions)
@@ -270,8 +273,8 @@ class Test_LLMUtils(unittest.TestCase):
 
     def test_str_compare(self):
         pairs = [['the cat', 'the cat', True],
-                 ['the cat', 'where is the cat?', True],
-                 ['the cat', 'did you see the rat in the yard?', False],
+                 ['Aron starts to sleep better.',
+                  "Therefore, Aron starting to sleep better is plausible if we assume that Venie continues to improve Aron's lot .", True],
                  ['Jack is a bird', 'He said that Jack is not a bird, did he not?', False]
         ]
         for p in pairs:
@@ -282,7 +285,21 @@ class Test_LLMUtils(unittest.TestCase):
     def test_dereference(self):
         text =  "Persian (/ˈpɜːrʒən, -ʃən/), also known by its endonym Farsi (فارسی fārsi (fɒːɾˈsiː) ( listen)), is one of the Western Iranian languages within the Indo-Iranian branch of the Indo-European language family. It is primarily spoken in Iran, Afghanistan (officially known as Dari since 1958), and Tajikistan (officially known as Tajiki since the Soviet era), and some other regions which historically were Persianate societies and considered part of Greater Iran. It is written in the Persian alphabet, a modified variant of the Arabic script, which itself evolved from the Aramaic alphabet."
         llm_utils.dereference_text(text)
+
+    def test_get_llm_msg(self):
+        msg = llm_utils.get_llm_msg(task='negate_sent', model=None,
+                                    msg_type_lbl='prompts', label=None )
+        print('msg\n', msg)
+        msg = llm_utils.get_llm_msg(task='backstep_in', model='deepseek-r1',
+                                    msg_type_lbl='prompts', label=None)
+        print('msg\n', msg)
+        msg = llm_utils.get_llm_msg(task='backstep_in', model='deepseek-r1',
+                                    msg_type_lbl='systems', label=None)
+        print('msg\n', msg)
+
+
 class Test_reasoning(unittest.TestCase):
+
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -306,6 +323,7 @@ class Test_reasoning(unittest.TestCase):
 
     def test_10_bs_0(self):
         bset = BeliefSet(self.bstore, path='/test_10', description='test_10')
+        sentenceReasoner = SentenceReasoner(bset, self.bstore)
         support = Support.from_axiom(0, {'source': 'axiom'}, self.bstore)
         bird_jack = Belief.from_support(self.bstore,
                                         bset,
@@ -322,10 +340,11 @@ class Test_reasoning(unittest.TestCase):
                                         bset,
                                         'Jack flies.',
                                         support,)
-        p = reasoning.verify(jack_flies, bset, self.bstore)
+        p = sentenceReasoner.verify(jack_flies, bset, self.bstore)
 
     def test_20_bs_0(self):
         bset = BeliefSet(self.bstore, path='/test_10', description='test_10')
+        sentenceReasoner = SentenceReasoner(bset, self.bstore)
         support = Support.from_axiom(0, {'source': 'axiom'}, self.bstore)
         bird_jack = Belief.from_support(self.bstore,
                                         bset,
@@ -337,7 +356,47 @@ class Test_reasoning(unittest.TestCase):
                                         bset,
                                         'Jack flies.',
                                         support,)
-        p = reasoning.verify(jack_flies, bset, self.bstore)
+        p = sentenceReasoner.verify(jack_flies, bset, self.bstore)
+
+class Test_supportGraph(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.bstore = BeliefStore(MILVUS_FILE, SQLITE_FILE)
+        cls.bset = BeliefSet(cls.bstore, '/', 'root')
+        cls.sentenceReasoner = SentenceReasoner(cls.bset, cls.bstore)
+        cls.premises = []
+        cls.inferred = []
+        s1 = Support.from_source(0, {'source_id': 0}, cls.bstore)
+        b1 = Belief.from_support(cls.bstore, cls.bset, 'Jack is a bird', s1)
+        cls.premises.append(b1)
+        #s2 = Support.from_source(0, {'source_id': 0}, cls.bstore)
+        #b2 = Belief.from_support(cls.bstore, cls.bset, 'Birds fly', s2)
+        #cls.premises.append(b2)
+        #s3 = Support.from_reasoning(cls.bstore, 0, [b1.id, b2.id], {})
+        #b3 = Belief.from_support(cls.bstore, cls.bset, 'Jack flies', s3)
+        #cls.inferred.append(b3)
+        support = Support.from_query(0, {'source': 'query'}, cls.bstore)
+        jack_flies = Belief.from_support(cls.bstore,
+                                        cls.bset,
+                                        'Jack flies.',
+                                        support,)
+        cls.inferred.append(jack_flies)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        info = cls.bstore.exit(dump_tables=['beliefs', 'stmts', 'stmtdists',
+                                            'stmt2bel', 'supports'])
+        print(info)
+        os.remove(MILVUS_FILE)
+        os.remove(SQLITE_FILE)
+
+    def runTest(self):
+        p = self.sentenceReasoner.verify(self.inferred[0], self.bset, self.bstore)
+        self.test_plot_derivation()
+
+    def test_plot_derivation(self):
+        supportGraph.plot_derivation(self.inferred[0], self.bstore, 'g1', '/tmp/g1.png', 10)
+
 
 if __name__ == '__main__':
     #unittest.main()
@@ -351,6 +410,8 @@ if __name__ == '__main__':
     testsuite.addTest(Test_LLMUtils())
     #testsuite.addTest(Test_reasoning())
     #testsuite.addTest(TestBeliefStore())
+    #testsuite.addTest(Test_supportGraph())
     unittest.TextTestRunner().run(testsuite)
+
 
 
