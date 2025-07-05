@@ -82,7 +82,7 @@ class Belief:
         :param text_rep: a representative text. there may be many statements that
         map to that belief.
         :param support: what supports adding this belief
-        :return: the belief
+        :return: the belief, status
 
         **NOTE** this assumes the belief does not already exist. if it does we will
         get duplicate beliefs.
@@ -92,31 +92,41 @@ class Belief:
         of the support.
         """
 
-        log.debug("Belief.from_support")
-        id_dist, isNew = bstore.get_similar_stmts(text_rep,
-                                                  wide_net=True,    # SHOULD BE TRUE
-                                                  max_match=1)
-        stmt_id = id_dist[0][0]
-        log.debug(f"adding to store stmt {stmt_id}")
-        bel = Belief()
-        bel.bstore = bstore
-        bel.bset_id = bset.id
-        bel.text_rep = text_rep
-        bel.support = support
-        b_id = bel._add_to_store(bstore, stmt_id)
-        if b_id is None:
-            log.error("Cannot add belief " + text_rep)
-            raise ValueError("cannot add belief to store")
-        bel.id = b_id
-        bel.support.belief_id = bel.id
-        cls.belief_dict[bel.id] = [bel]
-        bset.beliefs.append(bel.id)
-        log.info(f"Created belief {bel.id}: {bel.text_rep}")
-        log.info(f"Support: {str(bel.support)}")
-        #blog.info(f"in support dict: {Support.support_dict[support.id][0]}")
-        #blog.debug(f"len of belief_list = {len(cls.belief_dict)}")
-        #blog.debug(f"In beliefs : {str(cls.belief_dict[b_id])}")
-        return bel
+        log.info("Belief.from_support")
+        #id_dist, isNew = bstore.get_similar_stmts(text_rep,
+        #                                          wide_net=True,    # SHOULD BE TRUE
+        #                                          max_match=1)
+        bel, score, stmt_id, is_new = bset.get_matching_existing_belief(text_rep)
+        if bel is not None:
+            log.debug(f'Belief exists: {bel.id}')
+            merged, status = bel.merge_supports(support, score)
+            log.debug('Merged supports')
+            if bel.id not in bset.beliefs:
+                bset.beliefs.append(bel.id)
+            cls.belief_dict[bel.id] = [bel]
+        else:
+            #if bdt_list is not None:
+            #    if bdt_list[0][1] < params.
+            #stmt_id = id_dist[0][0]
+            status = 4
+            log.debug(f"adding to store stmt {stmt_id}")
+            bel = Belief()
+            bel.bstore = bstore
+            bel.bset_id = bset.id
+            bel.text_rep = text_rep
+            bel.support = support
+            b_id = bel._add_to_store(bstore, stmt_id)
+            if b_id is None:
+                log.error("Cannot add belief " + text_rep)
+                raise ValueError("cannot add belief to store")
+            bel.id = b_id
+            bel.support.belief_id = bel.id
+            bel.support.update()
+            cls.belief_dict[bel.id] = [bel]
+            bset.beliefs.append(bel.id)
+            log.info(f"Created belief {bel.id}: {bel.text_rep}")
+            log.info(f"Support: {str(bel.support)}")
+        return bel, status
 
     @classmethod
     def from_sql_row(cls, row, bstore):
@@ -151,6 +161,23 @@ class Belief:
             bel = cls.from_sql_row(row, bstore)
         return bel
 
+    def merge_supports(self,
+                       new_support,
+                       score):
+        """
+        Add a new support to an existing belief
+        :param new_support:
+        :return:
+        """
+        m, status = Support.by_merging(belief_id=self.id,
+                                       old_support = self.support,
+                                       new_support = new_support,
+                                       score = score,
+                                       bstore = self.bstore)
+        self.support = m
+        self.update_store(self.bstore)
+        return m, status
+
 
     @classmethod
     def update_table(cls, bstore):
@@ -182,7 +209,7 @@ class Belief:
 
     def _add_to_store(self, bstore, stmt_id):
         """ add the belief to the bstore.  """
-        log.debug("Belief._add_to_store")
+        log.info(f"Belief._add_to_store, stmt: {stmt_id}, {self.text_rep}")
         bel_id = None
         try:
             cur = bstore.conn.cursor()
@@ -199,11 +226,18 @@ class Belief:
             raise e
         return bel_id
 
+    def update_store(self, bstore):
+        log.info(f"update belief {self.id}")
+        sql = "update beliefs set text_rep=?, bset_id=?, support_id=? where id=?"
+        bstore.conn.execute(sql, (self.text_rep, self.bset_id, self.support.id, self.id))
+        bstore.conn.commit()
+
     def add_support(self,
                     support: Support,
                     score: float):
         """
         Given a new sypport for a belief, create a new one by merging
+        NOT USED see merge_supports
 
         :param source_info: info about the surce
         :param score: how close the original statment is to this one.
@@ -211,13 +245,15 @@ class Belief:
         """
         if self.bstore is None:
             raise ValueError("self.bstore is None")
-        #new_support = Support.from_source(self.id, source_dict, self.bstore)
+        support.belief_id = self.id
+        #support._add_to_store(self.bstore)
         merged_support = Support.by_merging(self.id,
                                             self.support,
                                             support,
                                             score,
                                             self.bstore)
         self.support = merged_support
+        self.update_store(self.bstore)
         return True
 
 # =============================

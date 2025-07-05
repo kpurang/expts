@@ -115,12 +115,16 @@ class Support:
     id: int = 0
     belief_id: int = 0      # the belief this support is about
     confidence: float = 0   # [-1, 1]
+    height: int = 0
+    depth: int = 0
+    weight: int = 0
     method:str = ''         # easier to search
     info: SInfo = None      # info is it based on is any. should have type
     supported_by: list[int] = field(default_factory=list)   # ids of supports who support this
     supports: list[int] = field(default_factory=list)       # ids of supports this supports.
 
     support_dict: ClassVar[dict] = {}   # id -> [sp_obj, list upd fields]
+    bstore: ClassVar[BeliefStore] = None
 
     def __str__(self):
         sb_str = ', '.join(str(s) for s in self.supported_by)
@@ -142,6 +146,7 @@ supports: {ss_str}"""
                 ):
         """ Returns a support object. """
         log.debug("Support.generic")
+        cls.bstore = bstore
         sp = cls()
         sp.belief_id = belief_id
         sp.info = SInfo(stype=stype, info=info)     # this is ugly
@@ -154,6 +159,18 @@ supports: {ss_str}"""
             raise ValueError("not found id")
         sp.id = sp_id
         cls.support_dict[sp.id] = [sp, []]
+        if len(supported_by) == 0:
+            sp.depth = 1
+        else:
+            sp.depth = max([Support.by_id(x).depth for x in supported_by]) + 1
+        sp.height = 0
+        for x in supported_by:
+            xs = Support.by_id(x)
+            if sp_id not in xs.supports:
+                xs.supports.append(sp_id)
+            xs.increment_height(sp.height)
+        for x in supported_by:
+            Support.by_id(x).increment_weight()
         log.debug(f"support from source: {sp.id} for {sp.belief_id}, confidence: {sp.confidence}")
         return sp
 
@@ -223,7 +240,8 @@ supports: {ss_str}"""
                    bstore: BeliefStore):
         """Generate a support object by merging 2 others.
 
-        TODO: add merge method ordering as parameter
+        TODO: propagate changes to the descendants and ancestors to maintain
+            consistincy and coherence
         generatees a new support by merging the new to the old
         assume the support has a type field
         There will eventually be multiple cases of supports to merge
@@ -231,7 +249,11 @@ supports: {ss_str}"""
         :param new_support: new one
         :param score: how well the new text matches the belief. polarity is important
         :param bstore: to store the new support
-        :return: nothing
+        :return: resultant-support, status
+            - 0: merge
+            - 1: same as old
+            - 2: same as new
+            - 3: error
 
         merging can occur if
         - we get a new derivation fro the beleif
@@ -243,6 +265,12 @@ supports: {ss_str}"""
         new_supports = new_support.supports
         old_id = old_support.id
         new_id = new_support.id
+        status = 0
+        if score * old_support.confidence * new_support.confidence < 0:
+            # the string being added is opposite to the belief
+            log.debug(f"merging contradictory supports. ")
+            new_support.confidence *= score
+            result, status = Support.CResolver.from_contra_merge(old_support, new_support)
         sp = cls()
         sp.belief_id = belief_id
         sp.info = SInfo(stype=SType.from_merge, info={'similarity_score': score})
@@ -250,16 +278,27 @@ supports: {ss_str}"""
         sp.supported_by = [old_support.id, new_support.id]
         sp.supports = []
         sp.method = 'by_merging'
-        if old_support.confidence * new_support.confidence < 0:
-            old_str = Belief.by_id(old_support.belief_id).text_rep
-            new_str = Belief.by_id(new_support.belief_id).text_rep
-            log.warning(f"Contradiction between\n{old_str}\n{new_str}")
-            sp.resolve_contradiction()
+        if status == 0:
+            sp.compute_confidence()
+        elif status == 1:
+            sp.confidence = old_support.confidence
+        elif status == 2:
+            sp.confidence == new_support.confidence
         else:
-            sp.compute_confidence()    # confidence is already assigned
+            log.error(f"unknown status from resolver {status}")
+
+        #if old_support.confidence * new_support.confidence < 0:
+        #    old_str = Belief.by_id(old_support.belief_id).text_rep
+        #    new_str = Belief.by_id(new_support.belief_id).text_rep
+        #    log.warning(f"Contradiction between\n{old_str}\n{new_str}")
+            #sp.resolve_contradiction()
+        #    Support.CResolver.from_supported_by(sp)
+        #else:
+        #    sp.compute_confidence()    # confidence is already assigned
         sp_id = sp._add_to_store(bstore)
         if sp_id is None:
-            return
+            log.error("Cannot save support")
+            return None, 4
         sp.id = sp_id
         if sp.confidence != prev_conf:
             # propagate the change to the beliefs supported
@@ -273,7 +312,12 @@ supports: {ss_str}"""
         old_support.supports.append(sp.id)
         new_support.supports.append(sp.id)
         log.debug(f"support by merging: {sp.id} for {sp.belief_id}, confidence: {sp.confidence}")
-        return sp
+        return sp, status
+
+    def compute_inertia(self):
+        # this is meant to represent the work needed to change this support
+        # TODO: a better method
+        return self.height
 
     def update_child_supported_by(self, new_id):
         """
@@ -285,6 +329,7 @@ supports: {ss_str}"""
         for sid in self.supports:
             the_obj = Support.by_id(sid)
             the_obj.supported_by = [new_id if x == self.id else x  for x in the_obj.supported_by]
+            the_obj.update()
         return
 
     # methods to compute resulting support.
@@ -311,9 +356,6 @@ supports: {ss_str}"""
         elif self.info.stype == SType.from_reasoning:
             if len(self.supported_by) > 0:
                 inst_sby = [Support.by_id(sid) for sid in self.supported_by]
-                print('supported by ', self.supported_by)
-                for s in inst_sby:
-                    print(s)
                 self.confidence = min([abs(s.confidence) for s in inst_sby])
                 if 'confidence' in self.info.info:
                     self.confidence *= self.info.info['confidence']
@@ -325,6 +367,7 @@ supports: {ss_str}"""
         elif self.info.stype == SType.from_query:
             self.confidence = params.credibilities['query']
         elif self.info.stype == SType.from_llm:
+            # needs more dynamic
             self.confidence = limiter(params.credibilities['llm'])
         else:
             # there can be more than one here. need to modify sum
@@ -332,6 +375,7 @@ supports: {ss_str}"""
             log.warning(f"compute-confidence, unknown type: {self.info.stype}")
             inst_sby = [Support.by_id(sid) for sid in self.supported_by]
             self.confidence = min([abs(s.confidence) for s in inst_sby])
+        self.update()
         return self.confidence
 
     def combine_cred(self,
@@ -384,7 +428,32 @@ supports: {ss_str}"""
         score_pol = -1 if score < 0 else 1
         self.confidence = limiter(old_support.confidence + new_support.confidence * score_pol)
         self.info.info['method'] = 'sum_confidence'  # already have stype
+        self.update()
         return True
+
+    def increment_height(self, height):
+        log.debug(f"increment height supports: {str(self.supports)}")
+        if len(self.supports) == 0:
+            return self.height
+        max_h = max([Support.by_id(x).height for x in self.supports])
+        if max_h == height:
+            self.height += 1
+            for x in self.supported_by:
+                Support.by_id(x).increment_height(self.height)
+        return self.height
+
+    def increment_weight(self):
+        """
+        weight is the numner of descendants, roughly
+        Issue with this is that we may count multiple times in some cases
+        :return: max weight
+        """
+        weights = []
+        for x in self.supported_by:
+            xs = Support.by_id(x)
+            xs.weight += 1
+            weights.append(xs.increment_weight())
+        return max(weights) if len(weights) > 0 else -1
 
     def resolve_contradiction(self):
         """
@@ -450,9 +519,55 @@ supports: {ss_str}"""
             log.error(f"Cannot write to support table.\n{str(e)}")
             raise e
         return sp_id
+
+    def update(self):
+        log.info(f'Updating suppoet {self.id}')
+        sql = """update supports set belief_id=?, confidence=?, method=?, info=?, \
+        supported_by=?, supports=? where id=?"""
+        Support.bstore.conn.execute(sql, (self.belief_id, self.confidence, self.method,
+                                  self.info.serialize(), json.dumps(self.supported_by),
+                                  json.dumps(self.supports), self.id))
+
     @classmethod
     def dump_support_dict(cls):
         rv = ''
         for k in cls.support_dict.keys():
             rv += f"{k}: {str(cls.support_dict[k][0])}\n"
         return rv
+
+    class CResolver:
+
+
+        @classmethod
+        def from_contra_merge(cls, old_support: Support, new_support:Support):
+            """
+            resolve the merge of two contradictory supports
+            :param old_support: existing support for the belief
+            :param new_support: new support
+            :return: the resultant support, status
+
+            status:
+                0: merge
+                1: old wins
+                2: new wins
+
+            For now:
+                1. higher weight wins - will be harder to change things
+                2. higher depth wins - derived from many sources
+                3. higher confidence wins
+                4. merge
+            """
+            if old_support.weight > new_support.weight:
+                return old_support, 1
+            elif new_support.weight > old_support.weight:
+                return new_support, 2
+            elif old_support.depth > new_support.depth:
+                return old_support, 1
+            elif new_support.depth > old_support.deth:
+                return new_support, 2
+            elif old_support.confidence > new_support.confidence:
+                return old_support, 1
+            elif new_support.confidence > old_support.confidence:
+                return new_support, 2
+            else:
+                return None, 0

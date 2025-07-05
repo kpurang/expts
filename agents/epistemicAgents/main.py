@@ -3,6 +3,7 @@ import os
 from beliefs import Belief
 from beliefSet import BeliefSet
 from beliefStore import BeliefStore #, blog
+from BeliefSupport import Belief_Support
 import logging
 import sys
 
@@ -29,10 +30,9 @@ def main():
 def test_10_makeBelief(bstore):
     bset = BeliefSet(bstore, 'ROOT', 'top level context')
     print('Bset: ', bset.id)
-    support = Support(0, {'source_type': 0}, self.bstore)
-    b1 = Belief.from_support(bstore = bstore, bset_id=bset.id,
+    b1, _ = Belief_Support.from_source(bstore = bstore, bset=bset,
                              text_rep='Ten rockets were launched today.',
-                             support)
+                             source_dict={'source_type': 0})
     print('MAIN: the belief:\n', b1)
     print(bstore.get_belief_by_id(b1.id))
     bstore.dump_vector_store()

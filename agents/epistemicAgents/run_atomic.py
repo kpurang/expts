@@ -31,11 +31,15 @@ import pandas as pd
 import json
 import argparse
 import regex
+from BeliefSupport import BeliefSupportContext, BeliefSupport
+from Belief_Support import Belief_Support
+
 
 # from SO
 # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
 class CustomFormatter(logging.Formatter):
-
+    # https: // talyian.github.io / ansicolors /
+    black = "\x1b[30m"
     grey = "\x1b[38;20m"
     yellow = "\x1b[33;20m"
     red = "\x1b[31;20m"
@@ -45,7 +49,7 @@ class CustomFormatter(logging.Formatter):
 
     FORMATS = {
         logging.DEBUG: grey + format + reset,
-        logging.INFO: grey + format + reset,
+        logging.INFO: black + format + reset,
         logging.WARNING: yellow + format + reset,
         logging.ERROR: red + format + reset,
         logging.CRITICAL: bold_red + format + reset
@@ -62,12 +66,12 @@ log = logging.getLogger()
 #fh = logging.FileHandler(filename=LOGFILE)
 #fh.setLevel(logging.DEBUG)
 cw = logging.StreamHandler(sys.stdout)
-cw.setLevel(logging.DEBUG)
+cw.setLevel(logging.INFO)
 formatter = CustomFormatter('%(asctime)s - %(levelname)s - %(message)s',
                               "%m/%d %H:%M:%S")
 cw.setFormatter(formatter)
 log.addHandler(cw)
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 
 llog = logging.getLogger('llog')
 fh = logging.FileHandler(filename=params.llm_log_fname)
@@ -92,22 +96,21 @@ ilog = logging.getLogger('infoLogger')
 ilog.addHandler(shi)
 ilog.setLevel(logging.INFO)
 
-logging.getLogger("requests").setLevel(logging.INFO)
-logging.getLogger("urllib3").setLevel(logging.INFO)
-logging.getLogger("httpcore").setLevel(logging.INFO)
+#logging.getLogger("requests").setLevel(logging.INFO)
+#logging.getLogger("urllib3").setLevel(logging.INFO)
+#logging.getLogger("httpcore").setLevel(logging.INFO)
 
-
-#MILVUS_FILE = '/tmp/s_test_milvus.db'
-#SQLITE_FILE = '/tmp/s_test_sqlite.db'
 
 example_file = "/Users/kp/projects/python/projects/agents/data/ex_50_5_0524_16:43.csv"
-out_basename = "/Users/kp/projects/python/projects/agents/data/imgs/"
+img_basename = "/Users/kp/projects/python/projects/agents/data/imgs/"
 out_responses = "/Users/kp/projects/python/projects/agents/data/working/"
 
 def justify_atomic(example_file = example_file,
                    nevents:int =0,
                    nconcls:int = 0,
                    eclist:list = [],
+                   run_label = '',
+                   img_fname = '',
                    ):  # plot graph for whuch conclusion.
     """
     Justify conclusions from events in the atomic dataset
@@ -125,8 +128,36 @@ def justify_atomic(example_file = example_file,
     """
     date = datetime.now().strftime('%m%d_%H%M')
 
-    ilog.warning("=================" + date + "========================================")
-    jlog.warning("=================" + date + "========================================")
+    llog.warning("\n=================" + date + "====================================\n")
+    jlog.warning("\n=================" + date + "====================================\n")
+
+    with BeliefSupportContext(run_label) as bs:
+        bset_names = bs.list_bsets()
+        print('Bsets: ', bset_names)
+        text2bid = {}   # map of texts to belief-ids
+        event_concl = get_event_conclusion(example_file, nevents, nconcls,
+                                           eclist)
+        print(event_concl)
+        for ec in event_concl:
+            print(f"processing ec")
+            if ec[0][1] not in text2bid:
+                text2bid[ec[0][1]] = (bel := bs.assert_belief(ec[0][1]
+                                                              , confidence=1.0)).id
+                print(f'inserted {ec[0][1]} with bid {bel.id}')
+            if ec[1][1] not in text2bid:
+                text2bid[ec[1][1]] = (qel := bs.generate_query(ec[1][1])).id
+                print(f"inserted query {ec[1][1]} as belief {qel.id}")
+            else:
+                qid = text2bid[ec[1][1]]
+            bel = bs.get_belief_confidence(text_rep=ec[1][1],
+                                                 belief_id=text2bid[ec[1][1]],
+                                                 premise_ids=[text2bid[ec[0][1]]],
+                                                 verify_even_if_exists=True)
+            print(f'confidence in {ec[1][1]} is {bel.support.confidence}')
+            bs.write_derivation_graph(bel, f'{ec[0][0]}_{ec[1][0]}')
+
+
+    """
     with BSContext() as bstore:
         bset = BeliefSet(bstore, '/', 'root')
         reasoner = SentenceReasoner(bset, bstore)
@@ -134,15 +165,20 @@ def justify_atomic(example_file = example_file,
                                            eclist)
         print(event_concl)
         for ec in event_concl:
-            upd_conclusion = justify_concl(bstore,
-                                           bset,
-                                           reasoner,
-                                           ec[0][1],
-                                           ec[1][1])
-            fname = f"e{ec[0][0]}_c{ec[1][0]}_{date}.png"
-            pathname = os.path.join(out_basename, fname)
-            supportGraph.plot_derivation(upd_conclusion, bstore, 'graph 1',
-                                     pathname, 10)
+            try:
+                upd_conclusion = justify_concl(bstore,
+                                               bset,
+                                               reasoner,
+                                               ec[0][1],
+                                               ec[1][1])
+                fname = f"e{ec[0][0]}_c{ec[1][0]}_{date}.png"
+                pathname = os.path.join(out_basename, fname)
+
+                print(f"Derivation output: {pathname}")
+            except Exception as e:
+                print(f'Verification failed for {ec[0][1]} -> {ec[1][1]}')
+    """
+
 
 
 def get_event_conclusion(example_file:str, nevent:int=0, nconcl:int=0,
@@ -193,29 +229,26 @@ def get_event_conclusion(example_file:str, nevent:int=0, nconcl:int=0,
 
 
 def add_event(bstore: BeliefStore, bset: BeliefSet, event: str):
-    support = Support.from_axiom(0, {'source': 'atomicDB'}, bstore)
-    event_0 = Belief.from_support(bstore,
+    event_0, _ = Belief_Support.from_axiom(bstore,
                                   bset,
                                   event,
-                                  support)
-    print('Support ', support)
+                                  {'source': 'atomicDB'})
+    #print('Support ', support)
     print('Belief ', event_0)
     return event_0
 
 def justify_concl(bstore: BeliefStore, bset:BeliefSet, reasoner:SentenceReasoner,
                   event: Belief, conclusion: str):
-    support = Support.from_query(0, {'source': 'atomicDB'}, bstore)
     conclusion_bel, _, _, _ = bset.get_matching_existing_belief(conclusion)
     if conclusion_bel is None:
-        conclusion_bel = Belief.from_support(bstore,
+        conclusion_bel, _ = Belief_Support.from_query(bstore,
                                          bset,
                                          conclusion,
-                                         support, )
+                                         {'source': 'atomicDB'})
     event_bel, _, _, _ = bset.get_matching_existing_belief(event)
     if event_bel is None:
         log.info('Event does not exist, addint it')
-        e_support = Support.from_axiom(0, {'source': 'atomidDb'}, bstore)
-        event_bel = Belief.from_support(bstore, bset, event, e_support, )
+        event_bel, _ = Belief_Support.from_axiom(bstore, bset, event, {'source': 'atomidDb'})
     #print('Support ', support)
     #print('Belief ', conclusion)
     # p = reasoner.verify(conclusion)
@@ -299,6 +332,10 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--example_file', type=str, default=example_file,
                     help='File containing processed atomic examples')
+    ap.add_argument('--run_label', type=str, required=True,
+                    help='A label for this run')
+    ap.add_argument('--graph_path', type=str, default=None,
+                    help="filenane for derivation graph. Skip for auto name")
     ap.add_argument('--nevents', type=int, default=0,
                     help="Number of randomly picked events to process.")
     ap.add_argument('--nconclusions', type=int, default=0,
@@ -309,6 +346,8 @@ if __name__ == '__main__':
     if args.nevents == 0 and args.eclist == '':
         print("Nothing to do")
         exit()
+    if args.graph_path is None:
+        graph_path = os.path.join(img_basename, args.run_label)
     eclist = []
     print('args.eclist ', (a_ecl := args.eclist))
     print(a_ecl)
@@ -318,5 +357,7 @@ if __name__ == '__main__':
                    nevents = args.nevents,
                    nconcls = args.nconclusions,
                    eclist = eclist,
+                   run_label = args.run_label,
+                   img_fname =graph_path,
                    )
 

@@ -11,6 +11,7 @@ from support import Support
 import params
 import Levenshtein
 import globals
+from tenacity import *
 
 """
 Classes:
@@ -170,6 +171,8 @@ class BeliefStore:
         else:
             raise ValueError("Cannot get statement for " + txt)
 
+    @retry(retry=retry_if_exception(Exception), stop=stop_after_attempt(params.VDB_RETRIES),
+           after=after_log(log, logging.WARN))
     def get_similar_stmts(self,
                           txt: str,
                           wide_net: bool = False,
@@ -273,6 +276,7 @@ class BeliefStore:
                     log.error(f"Cannot update stmtdists\n{str(e)}")
                     raise e
         # return the stmt that matches the txt exactly
+        assert id_dists[0][1] <= params.EPS_EMBED_IDENT
         return id_dists, is_new
 
     def get_milvus_id_dist(self,
@@ -304,7 +308,7 @@ class BeliefStore:
                                     limit=max_match,
                                     )
         # COSINE returns similarity. convert all to distances 0..1
-        print(res)
+        print('milvus output (similarities)\n', res)
         if len(res[0]) > 0:
             for x in res[0]:
                 if 'id' in x:
@@ -338,6 +342,7 @@ class BeliefStore:
         id_dists, is_new = self.get_similar_stmts(txt, wide_net=True, max_match=max_match)
         bid_dist_txt = []
         the_stmt_id = id_dists[0][0]
+        log.debug(f'best match {id_dists[0][0]}, {id_dists[0][1]}')
         log.debug(f"stmt id from get-similar-stmts: {the_stmt_id}")
         if id_dists[0][1] < params.EPS_EMBED_IDENT and not mult_match:
             # if the closest stmt/belief is almost identical, return just that one
@@ -440,6 +445,16 @@ class BeliefStore:
         if row is None:
             return None
         return row
+
+    def list_bsets(self):
+        rows = []
+        sql = "select id, path, description from bsets"
+        try:
+            res = self.conn.execute(sql)
+            rows = res.fetchall()
+        except Exception as e:
+            log.warning(f"Cannot get bset list \n {str(e)}")
+        return rows
 
 
 

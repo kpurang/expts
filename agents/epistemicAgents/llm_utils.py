@@ -23,6 +23,9 @@ Methods:
     - dereference_text: dereferences text input
     - is_derivable: determines if a conclusion is derivable from sone premises
 
+TODO:
+    - determine grammaticality of sentences and optionally fix
+    
 """
 
 # logging
@@ -83,7 +86,7 @@ def get_llm_msg(task, model=None, msg_type_lbl='prompts', label=None):
     relpath_tm = os.path.join(relpath_t, model)
     relpath_tmt = os.path.join(relpath_tm, msg_type_lbl)
     lbl_text = None
-    log.debug(f"relpath: {relpath_tm}")
+    #log.debug(f"relpath: {relpath_tm}")
     if relpath_tm in msgs:
         # we have seem this before and cached the llm-inputs
         if msgs[relpath_tm] == {}:
@@ -154,6 +157,9 @@ def make_query_no_format(model, system_msg, prompt, server=True):
     llog.info('SYSTEM: ' + system_msg)
     llog.info('PROMPT\n' + prompt)
     llog.info('RESPONSE\n' + response['response'])
+    log.info('SYSTEM: ' + system_msg)
+    log.info('PROMPT\n' + prompt)
+    log.info('RESPONSE\n' + response['response'])
     return response
 
 @retry(retry=retry_if_exception(Exception), stop=stop_after_attempt(params.LLM_RETRIES),
@@ -181,6 +187,9 @@ def make_query_with_format(model, system_msg, prompt, format, server=True):
     llog.info('SYSTEM: ' + system_msg)
     llog.info('PROMPT\n' + prompt)
     llog.info('RESPONSE\n' + response['response'])
+    log.info('SYSTEM: ' + system_msg)
+    log.info('PROMPT\n' + prompt)
+    log.info('RESPONSE\n' + response['response'])
     return response
 
 
@@ -190,7 +199,7 @@ def get_degree_similarity(s1: str,
     log.debug(f"llm_utils.get_degree_similarity\n{s1}\n{s2}")
     pol = get_polarity(s1, s2)
     if pol == 0:
-        log.debug("polarisy 0")
+        #log.debug("polarisy 0")
         return 0
     else:
         return get_degree(s1, s2, pol==1) * pol
@@ -288,12 +297,12 @@ def do_backstep_query(facts: list[str],
     log.info("do_backstep_query")
     fact_str = ''
     for i, f in enumerate(facts):
-        fact_str += f"{i}. {f}"
+        fact_str += f"{i}. {f}\n"
     if prompt_type == 'in':
         prompt = get_llm_msg('backstep_in').format(conclusion=query, facts=fact_str)
         sys_msg = get_llm_msg('backstep_in', msg_type_lbl='systems')
     elif prompt_type == 'any':
-        prompt = get_llm_msg('backstep_any', label='v3').format(conclusion=query, facts=fact_str)
+        prompt = get_llm_msg('backstep_any', label='v4').format(conclusion=query, facts=fact_str)
         sys_msg = get_llm_msg('backstep_any', msg_type_lbl='systems')
     else:
         log.warning('Unknown prompt type')
@@ -311,14 +320,17 @@ def get_inference_likelihood(premises, consequence):
                              msg_type_lbl='systems', label='v1')
     prompt = get_llm_msg('inference_likelihood', model=model,
                              msg_type_lbl='prompts', label='v1')
-    str_premises = '\n'.join(premises)
+    str_premises = ''
+    for i, p in enumerate(premises):
+        str_premises += f"{i}. {p}\n"
     fprompt = prompt.format(consequence=consequence, sentences=str_premises)
     log.debug(fprompt)
+    llog.debug(fprompt)
     response = make_query_with_format(model = model,
                                       system_msg=system_msg,
                                       prompt=fprompt,
                                       format='json')
-
+    llog.info(response['response'])
     likelihood = json.loads(response['response'])['likelihood']
     assert likelihood >= 0.0
     assert likelihood <= 1.0
@@ -341,15 +353,16 @@ def str_compare_llm(target: str, candidate: str):
     sys_msg = get_llm_msg(task='direct_implic', model='mistral', msg_type_lbl='systems')
     prompt = get_llm_msg(task='direct_implic', model='mistral').format(candidate=candidate,
                                                                       query=target)
-    log.debug(f"str_compare\n{prompt}")
+    #log.debug(f"str_compare\n{prompt}")
     answer = None
     response = make_query_with_format(model='mistral',
                                       system_msg=sys_msg,
                                       prompt=prompt,
                                       format='json'
                                       )
-    log.debug(f"response: {response['response']}")
-    implies = json.loads(response['response'])
+    rresponse = response['response']
+    #log.debug(f"response: {rresponse}")
+    implies = json.loads(rresponse)
     answer = implies['implies']
     assert (answer == 0 or answer == 1)
     if answer == 1:

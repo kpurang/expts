@@ -5,6 +5,7 @@ import beliefs
 from beliefStore import BeliefStore
 from beliefSet import BeliefSet
 from beliefs import Belief, Support
+from BeliefSupport import Belief_Support
 import logging
 import sys
 import random
@@ -53,11 +54,9 @@ class TestBelief(unittest.TestCase):
         the_text = 'test text one'
         stmt_id = self.bstore.get_stmt_id(the_text)
         print('stmt id ', stmt_id)
-        support = Support.from_source(0, {'source_type': 0}, self.bstore)
-        b1 = Belief.from_support(bstore = self.bstore, bset=bset,
+        b1, _ = Belief_Support.from_source(bstore = self.bstore, bset=bset,
                                 text_rep=the_text,
-                                stmt_id = stmt_id,
-                                support=support)
+                                source_dict={'source_type': 0})
         print('the beief:\n', b1)
         print(Belief.from_sql_row(self.bstore.get_belief_row_by_id(b1.id), self.bstore))
         self.bstore.dump_vector_store()
@@ -177,9 +176,7 @@ class TestBeliefStore(unittest.TestCase):
             bid_dist_txt, the_stmt_id, is_new = self.bstore.get_similar_beliefs(s, self.bset.id)
             if len(bid_dist_txt) == 0:
                 print('No matches, adding belief for ', s)
-                support = Support.from_source(0, {'label': 'foo'}, self.bstore)
-                b = Belief.from_support(self.bstore, self.bset, s, the_stmt_id,
-                                       support)
+                b, _ = Belief_Support.from_source(self.bstore, self.bset, s, {'label': 'foo'})
                 beliefs.append(b)
             else:
                 print('has matches')
@@ -187,9 +184,7 @@ class TestBeliefStore(unittest.TestCase):
                     print(r)
                 if abs(bid_dist_txt[0][1]) > 1e-2:
                     print('adding belief for ', s)
-                    support = Support.from_source(0, {'label': 'foo'}, self.bstore)
-                    b = Belief.from_support(self.bstore, self.bset, s, the_stmt_id,
-                                           support)
+                    b, _ = Belief_Support.from_source(self.bstore, self.bset, s, {'label': 'foo'})
                 else:
                     print('Existing belief is close enough')
 
@@ -324,38 +319,33 @@ class Test_reasoning(unittest.TestCase):
     def test_10_bs_0(self):
         bset = BeliefSet(self.bstore, path='/test_10', description='test_10')
         sentenceReasoner = SentenceReasoner(bset, self.bstore)
-        support = Support.from_axiom(0, {'source': 'axiom'}, self.bstore)
-        bird_jack = Belief.from_support(self.bstore,
+        bird_jack, _ = Belief_Support.from_axiom(self.bstore,
                                         bset,
                                         'Jack is a bird',
-                                        support)
+                                        {'source': 'axiom'})
         print(bird_jack)
-        support = Support.from_axiom(0, {'source': 'axiom'}, self.bstore)
-        birds_fly = Belief.from_support(self.bstore,
+        birds_fly, _ = Belief_Support.from_axiom(self.bstore,
                                         bset,
                                         'Birds fly.',
-                                        support,)
-        support = Support.from_query(0, {'source': 'query'}, self.bstore)
-        jack_flies = Belief.from_support(self.bstore,
+                                        {'source': 'axiom'})
+        jack_flies, _ = Belief_Support.from_query(self.bstore,
                                         bset,
                                         'Jack flies.',
-                                        support,)
+                                        {'source': 'query'})
         p = sentenceReasoner.verify(jack_flies, bset, self.bstore)
 
     def test_20_bs_0(self):
         bset = BeliefSet(self.bstore, path='/test_10', description='test_10')
         sentenceReasoner = SentenceReasoner(bset, self.bstore)
-        support = Support.from_axiom(0, {'source': 'axiom'}, self.bstore)
-        bird_jack = Belief.from_support(self.bstore,
+        bird_jack, _ = Belief_Support.from_axiom(self.bstore,
                                         bset,
                                         'Jack is a bird',
-                                        support)
+                                        {'source': 'axiom'})
         print(bird_jack)
-        support = Support.from_query(0, {'source': 'query'}, self.bstore)
-        jack_flies = Belief.from_support(self.bstore,
+        jack_flies, _ = Belief_Support.from_query(self.bstore,
                                         bset,
                                         'Jack flies.',
-                                        support,)
+                                        {'source': 'query'})
         p = sentenceReasoner.verify(jack_flies, bset, self.bstore)
 
 class Test_supportGraph(unittest.TestCase):
@@ -366,8 +356,7 @@ class Test_supportGraph(unittest.TestCase):
         cls.sentenceReasoner = SentenceReasoner(cls.bset, cls.bstore)
         cls.premises = []
         cls.inferred = []
-        s1 = Support.from_source(0, {'source_id': 0}, cls.bstore)
-        b1 = Belief.from_support(cls.bstore, cls.bset, 'Jack is a bird', s1)
+        b1, _ = Belief_Support.from_source(cls.bstore, cls.bset, 'Jack is a bird', {'source_id': 0})
         cls.premises.append(b1)
         #s2 = Support.from_source(0, {'source_id': 0}, cls.bstore)
         #b2 = Belief.from_support(cls.bstore, cls.bset, 'Birds fly', s2)
@@ -375,11 +364,10 @@ class Test_supportGraph(unittest.TestCase):
         #s3 = Support.from_reasoning(cls.bstore, 0, [b1.id, b2.id], {})
         #b3 = Belief.from_support(cls.bstore, cls.bset, 'Jack flies', s3)
         #cls.inferred.append(b3)
-        support = Support.from_query(0, {'source': 'query'}, cls.bstore)
-        jack_flies = Belief.from_support(cls.bstore,
+        jack_flies, _ = Belief_Support.from_query(cls.bstore,
                                         cls.bset,
                                         'Jack flies.',
-                                        support,)
+                                        {'source': 'query'})
         cls.inferred.append(jack_flies)
 
     @classmethod

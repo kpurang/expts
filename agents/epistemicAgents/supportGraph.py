@@ -15,7 +15,8 @@ from beliefSet import BeliefSet
 from beliefStore import BeliefStore
 from support import Support
 import llm_utils
-import pydot
+import utils.nl_utils as nl_utils
+import pydotplus.graphviz as pydot
 
 # logging
 log = logging.getLogger()
@@ -31,9 +32,9 @@ over that graph
 
 def plot_derivation(bel: Belief,
                     bstore,
-                     gname: str,
-                     pngFname: str,
-                     depth: int):
+                     gname: str = 'Derivation',
+                     pngFname: str = '/tmp/derivation.png',
+                     depth: int = 20):
     """
     generates a png of the derivation of the given belief
 
@@ -42,12 +43,19 @@ def plot_derivation(bel: Belief,
     """
     log.debug('SentenceGraps:plot_derivation')
     log.debug('Support dict\n' + Support.dump_support_dict())
-    graph = pydot.Dot(gname, graph_type="graph", bgcolor="white")
+    graph = pydot.Dot(gname, graph_type="digraph", simplify=True, bgcolor="white")
     node2sid = []
     sid2node = {}
     print("Support of root bel: " + str(bel.support))
-    root = pydot.Node(f"s_{bel.support.id}",
-                      label= f"{bel.support.info.stype.name}: {bel.text_rep} @{bel.support.confidence:.2f}")
+    label = nl_utils.quick_compact(bel.text_rep) #+ {bel.support.confidence:.2f}
+    root = pydot.Node(name=f"s_{bel.support.id}",
+                      label= f"{label} @{bel.support.confidence:.2f}",
+                      shape='box',
+                      style='filled',
+                      fillcolor = params.support2color[bel.support.info.stype.name],
+                      penwidth=2,
+                      peripheries=2,
+                      )
     sid2node[bel.support.id] = len(node2sid)
     node2sid.append(bel.support.id)
     graph.add_node(root)
@@ -55,8 +63,11 @@ def plot_derivation(bel: Belief,
     add_premises(graph, bel.support, depth-1, bstore, [])
     log.debug("dot file\n" + graph.to_string())
     #log.debug("\ngraphviz file\n" + graph.create_dot())
-    graph.write_png(pngFname)
+    png = graph.create(prog='dot', format='png')
+    with open(pngFname, 'wb') as px:
+        px.write(png)
     log.info(f"written png file: {pngFname}")
+    return png
 
 def add_premises(graph, support, depth, bstore, processed_nodes):
     if depth <= 0:
@@ -70,11 +81,20 @@ def add_premises(graph, support, depth, bstore, processed_nodes):
         log.debug(f"supported by {sid}")
         the_support = Support.by_id(sid)
         premise = Belief.by_id(the_support.belief_id, bstore)
+        label = nl_utils.quick_compact(premise.text_rep) + f"@ {premise.support.confidence:.2f}"
         pnode = pydot.Node(f"s_{sid}",
-                           label = f"{the_support.info.stype.name}:{premise.text_rep} @{the_support.confidence:.2f}")
+                           #label = f"{premise.text_rep} @{the_support.confidence:.2f}",
+                           label=label,
+                           shape='box',
+                           style='filled',
+                           fillcolor=params.support2color[the_support.info.stype.name],
+                           )
         graph.add_node(pnode)
         log.debug(f"Added node {premise.text_rep}")
-        pedge = pydot.Edge(dst=f"s_{support.id}", src=f"s_{sid}")
+        pedge = pydot.Edge(dst=f"s_{support.id}",
+                           src=f"s_{sid}",
+                           arrowhead='normal',
+                           color='black')
         graph.add_edge(pedge)
         log.debug(f"Added edge s_{sid} -> s_{support.id}")
         processed_nodes.append(support.id)
@@ -113,11 +133,12 @@ def bset_derivable(bel: Belief,
                               info = None,
                               supported_by = [b.id for b in result],
                               supports = [])
-        merged_support = Support.by_merging(bel.id,
-                                            old_support = bel.support,
-                                            new_support = new_support,
-                                            score = 1.0,
-                                            bstore = bstore)
+        bel.merge_supports(new_support, 1.0)
+        #merged_support = Support.by_merging(bel.id,
+        #                                    old_support = bel.support,
+        #                                    new_support = new_support,
+        #                                    score = 1.0,
+        #                                    bstore = bstore)
         new_support.supports.append(merged_support.id)
         merged_support.supported_by.append(bel.support.id, new_support.id)
         bel.support = merged_support

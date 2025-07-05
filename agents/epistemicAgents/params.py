@@ -1,6 +1,8 @@
 
 # parameters
 
+BASEDIR = '/Users/kp/projects/python/projects/agents/data'
+
 ## FILES
 LOGFILE = '/Users/kp/projects/python/projects/agents/log/beliefs.log'
 llm_log_fname = '/Users/kp/projects/python/projects/agents/logs/llm.log'
@@ -24,6 +26,7 @@ COSINE_WN_RANGE = 1.2	# similarity can be > 1. maybbe better to round
 COSINE_NN_RADIUS = 0.8
 COSINE_NN_RANGE = 1.2
 SIM_NUM_MATCH = 256     # max number of similar embeddings to find
+VDB_RETRIES = 2
 
 # sqlite
 # add indices keys etc later
@@ -76,7 +79,7 @@ LLM_RETRIES = 2
 # distances
 LEVENSHTEIN_LB = 0.8
 SB_THRESHOLD = 0.25     # max distance for similar beliefs
-RB_THRESHOLD = 0.75     # max distance for related beliefs
+RB_THRESHOLD = 0.5      # max distance for related beliefs
 # min abs llm similarity score to consider 2 sentences to mean the same thing
 LLM_SIM_THRESHOLD = 0.7
 
@@ -109,5 +112,15 @@ p_prop = 0.75  # max proportion of a line in parens for the paren contents to be
 max_dist = 0.2
 justification_prefixes = ['fact', 'assumption', 'consequence', 'conclusion', 'inference']
 
-min_inference_likslihood = 0.65
+min_inference_likslihood = 0.6
 
+max_graph_label_len = 25
+max_derivation_depth = 10
+# https://graphviz.org/doc/info/colors.html
+support2color = {'from_source': 'lightyellow',
+                 'from_reasoning': 'gold',
+                 'from_merge': 'gray95',
+                 'from_axiom': 'cornsilk',
+                 'from_query': 'palegreen',
+                 'from_llm' : 'skyblue1'
+}

@@ -8,6 +8,7 @@ from support import Support
 #from sentenceReasoner import SentenceReasoner
 # from supportGraph import plot_derivation
 
+from Belief_Support import Belief_Support
 import utils.nl_utils as nl_utils
 """
 Classes:
@@ -206,6 +207,7 @@ values('{path}', '{description}')""")
     def add_bel_from_support(self,
                              text: str,  # the text to set into a belief
                              support: Support,  # information about the source
+                             do_match:bool = True,
                              ):
         """
         add a belief that has a support
@@ -216,11 +218,15 @@ values('{path}', '{description}')""")
         """
         log.debug(f"BeliefSet.add_bel_from_support: {text}")
         the_bel = None
-        closest_bel, score, stmt_id, stmt_is_new = self.get_matching_existing_belief(text)
+        if do_match:
+            closest_bel, score, stmt_id, stmt_is_new = self.get_matching_existing_belief(text)
+        else:
+            closest_bel, score, stmt_id, stmt_is_new = None, 0, None, False
         if score is not None and abs(score) > params.LLM_SIM_THRESHOLD:
             # need to merge the new support with the existing one
             closest_bel.add_support(support, score)
             the_bel = closest_bel
+            support.belief_id = the_bel.id
             # the text input is a differnet representation of an existing belief.
             if stmt_is_new:
                 try:
@@ -228,11 +234,12 @@ values('{path}', '{description}')""")
                     self.bstore.conn.execute(sql)
                 except Exception as e:
                     log.error(f"Cannot add stmt2id\n{e}")
+                    # maybe here remoce teh support?
                     raise e
             log.debug(f"updated belief {closest_bel.id} ")
         else:
             # this is a new beleif
-            new_bel = Belief.from_support(self.bstore,
+            new_bel, _ = Belief_Support.from_support(self.bstore,
                                           bset = self,
                                           text_rep = text,
                                           support = support,
@@ -289,7 +296,7 @@ values('{path}', '{description}')""")
             closest_bel = self.get_belief_by_id(closest_bel_id)
             return closest_bel, best_score, stmt_id, is_new
         else:
-            return None, None, None, None
+            return None, None, stmt_id, is_new
 
 
     def get_belief_by_id(self, bid):
@@ -302,7 +309,7 @@ values('{path}', '{description}')""")
         log.debug(f"BeliefSet.get_belief_by_id {bid}")
         the_belief = Belief.by_id(bid, self.bstore)
         if bid not in self.beliefs:
-            return self.beliefs.append(bid)
+            self.beliefs.append(bid)
         return the_belief
 
     # assumes unimplemented features

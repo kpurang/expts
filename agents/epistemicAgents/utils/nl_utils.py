@@ -25,7 +25,7 @@ llog = logging.getLogger('llog')
 
 paren_re = re.compile('([^\(]*)\((.*)\)([^\)]*)')
 # was '(\w+)[: ](.*)'
-prefix_re = re.compile('(\w+)[:](.*)')
+prefix_re = re.compile('([\w\s]+):(.*)')
 
 def tag_llm_justification(response_dict,
                           facts,
@@ -58,26 +58,28 @@ def tag_llm_justification(response_dict,
         pre_m = prefix_re.match(line)
         labeled = False
         if pre_m is not None:
+            log.debug('matching prefix')
             # we can identify a prefix
             prefix_dist = str_compare(pre_m[1], prefix_list, kwd_vectors)
             if prefix_dist is not None:
-                tagged_lines.append([prefix_dist[0], pre_m[2]])
+                tagged_lines.append([prefix_dist[0], pre_m[2].strip()])
                 if prefix_dist[0] == 'conclusion':
                     num_conclusions += 1
                 labeled = True
         if not labeled:
             # cannot identify a prefix, so we take all words
+            log.debug('matching all words for prefix')
             words = line.split(' ')
             for word in words:
                 prefix_dist = str_compare(word, prefix_list, kwd_vectors)
                 if prefix_dist is not None:
-                    tagged_lines.append([prefix_dist[0], line])
+                    tagged_lines.append([prefix_dist[0], line.strip()])
                     if prefix_dist[0] == 'conclusion':
                         num_conclusions += 1
                     labeled = True
                     break  # we should perhaps look at all the words iso being greedy
         if not labeled:
-            tagged_lines.append('None', line)
+            tagged_lines.append('None', line.strip())
         log.debug(f"labeled as {tagged_lines[-1][0]}")
             # maybe throw exception here
             # or match with facts
@@ -87,6 +89,7 @@ def tag_llm_justification(response_dict,
         assert num_conclusions > 0
     # verify facts and match None. replace with the given fact.
     fact_vectors = get_kwd_vectors(facts)
+    log.debug('matching facts')
     for t in tagged_lines:
         if t[0] in ['fact', 'None']:
             f_match = str_compare(t[1], facts, fact_vectors)
@@ -97,26 +100,44 @@ def tag_llm_justification(response_dict,
             else:
                 log.debug(f"{t[1]} not matched to fact")
                 t[0] = 'None'   # change fact to none is no match
-                # should laso conisder substrings
     # if there are many labeled conclusion, pick the closest
     # assume at least one is a decent match
     if num_conclusions > 1:
         c_dists = []
         for i, tl in enumerate(tagged_lines):
             if tl[0] == 'conclusion':
+                log.debug('Matching conclusion')
                 #c_match = get_distance(conclusion, tl[1])
                 #log.debug(f"{i}: {conclusion} - {tl[1]}: {c_match}")
                 #c_dists.append([i, c_match])
                 match_degree = str_compare(conclusion, [tl[1]], None)
-                c_dists.append([i, match_degree])
+                if type(match_degree) is not list or len(match_degree) != 2 or match_degree is None:
+                    log.warning(f'getting bad matchdegree for conclusion {type(match_degree)} {str(match_degree)}')
+                    # if match_degree is None:
+                    match_degree = [tl[1], 99]
+                c_dists.append(match_degree)
+        log.debug("c_dists " + str(c_dists))
         c_dists.sort(key=lambda x: x[1])
         log.debug(str(c_dists))
-        for x in c_dists[1:]:
-            tagged_lines[x[0]][0] = 'None'
+        # ERROR: c-dists is list of [string, score] not tagged-line-index, string, score
+        #for x in c_dists[1:]:
+        #    tagged_lines[x[0]][0] = 'None'
+        for i, tl in enumerate(tagged_lines):
+            if tl[0] == 'conclusion':
+                if tl[1] != c_dists[0][0]:
+                    tagged_lines[i][0] = 'None'
+                else:
+                    tagged_lines[i][1] = conclusion
         # change to the expected conclusion
-        tagged_lines[c_dists[0][0]][1] = conclusion
+        #if c_dists[0][1] > 0:   # need a threshold here
+        #    tagged_lines[c_dists[0][0]][1] = conclusion
+        #else:
+        #    tagged_lines[c_dists[0][0]][1] = 'None'
+    # change all None to assumption
     llog.info('\nTAGGED:')
     llog.info('\n'.join([f"{tl[0]}: {tl[1]}" for tl in tagged_lines]) + '\n')
+    log.info('\nTAGGED:')
+    log.info('\n'.join([f"{tl[0]}: {tl[1]}" for tl in tagged_lines]) + '\n')
     return tagged_lines
 
 def strip_enum(lines):
@@ -128,7 +149,7 @@ def strip_parens(lines):
     :param lines: lines to strip parens from
     :return: lines without parens
 
-    Assumes only one pair of parens per line.
+    Assumes only one pair of parens per line. **not true** fix that
     TODO: Sometiems the parens contain important info. needs fixing
     """
     rv = []
@@ -141,6 +162,27 @@ def strip_parens(lines):
                 line = line.replace('(', ' ').replace(')', ' ').strip()
         rv.append(line)
     return rv
+
+def strip_paren_line(line):
+    # assume parens are balanced, and in the right order
+    np_line = ''
+    lb = 0
+    while lb < len(line) - 1:
+        open_ix = line[lb:].find('(')
+        if open_ix < 0:
+            np_line += line[lb:]
+            break
+        else:
+            np_line += line[lb:lb+open_ix]
+            lb = lb + open_ix + 1
+            close_ix = line[lb:].find(')')
+            #assert close_ix > 0
+            if close_ix < 0:
+                # if lone (, skip it. could also delete to end of line..
+                lb += 1
+            else:
+                lb = close_ix + 1
+    return np_line
 
 
 def get_kwd_vectors(kwds: list[str]):
@@ -195,32 +237,48 @@ def str_compare(target: str, candidates: list[str] = [], embeddings = None):
     Assume the strings input are stripped
     use more expensive methods later
     """
-    candidate_str = ' '.join(candidates)
+    candidate_str = '\n'.join(candidates)
     log.debug(f"str_compare {target}, {candidate_str}")
-    target = target.lower()
-    for candidate in candidates:
-        if target == candidate:
-            return [candidate, 0]
-    for candidate in candidates:
-        if str_compare_sstring(target, candidate):
-            return [candidate, 1]
-    for candidate in candidates:
-        if str_compare_levenshtein(target, candidate):
-            return [candidate, 2]
-    if embeddings is None:
-        for candidate in candidates:
-            if get_distance(target, candidate) <= params.max_dist:
-                return [candidate, 3]
+    log.debug('equality check')
+    ltarget = re.sub('[^\w\s]', '', target.lower()).strip()
+    lcandidates = [re.sub('[^\w\s]', '', x.lower()).strip() for x in candidates]
+    for i, candidate in enumerate(lcandidates):
+        if ltarget == candidate:
+            return [candidates[i], 0]
+    log.debug('substring check')
+    for i, candidate in enumerate(lcandidates):
+        print(f"{i} {ltarget} -- {candidate}")
+        if str_compare_sstring(ltarget, candidate):
+            return [candidates[i], 1]
+    log.debug('levenshtein dist')
+    for i, candidate in enumerate(lcandidates):
+        print(f"{i} {ltarget} -- {candidate}")
+        if str_compare_levenshtein(ltarget, candidate):
+            return [candidates[i], 2]
+    if embeddings is None or len(candidates) < 5 :
+        log.debug('looking ar distance')
+        for i, candidate in enumerate(lcandidates):
+            print(f"{i} {ltarget} -- {candidate}")
+            if get_distance(ltarget, candidate) <= params.max_dist:
+                return [candidates[i], 3]
     else:
-        return get_best_match(target, embeddings, candidates)
+        log.debug('using vector db')
+        mrv =  get_best_match(ltarget, embeddings, lcandidates)
+        print(mrv)
+        if mrv[1] <=params.max_dist:
+            return mrv
     # TODO: process all with one llm query
+    log.debug('using llm compare')
     for candidate in candidates:
         if llm_utils.str_compare_llm(target, candidate):
             return [candidate, 4]
+    log.debug('no match')
     return None
 
 def str_compare_sstring(the_str:str, candidate:str):
     if the_str in candidate:
+        return True
+    elif candidate in the_str:
         return True
     return False
 
@@ -247,6 +305,32 @@ def str_compare_levenshtein(the_str:str, candidate:str):
         return True
     else:
         return str_compare_levenshtein(the_str, candidate[eidx+1:])
+
+
+def quick_compact(label, maxlen=params.max_graph_label_len):
+    """
+    split a belief text rep into multiple lines to look better in the graph
+    :param label: the label
+    :param maxlen: max length of a line
+    :return: fixed label
+
+    Quick approach to this.
+    """
+    words = label.split(' ')
+    new_label = ''
+    line = ''
+    lb = 0
+    ub = 0
+    while ub < len(words):
+        if len(line) > maxlen:
+            new_label += ' '.join(words[lb:ub - 1]) + '\n'
+            line = words[ub - 1] + ' '
+            lb = ub - 1
+        else:
+            line += ' ' + words[ub]
+            ub += 1
+    new_label += ' '.join(words[lb:])
+    return new_label
 
 
 ## below not used
